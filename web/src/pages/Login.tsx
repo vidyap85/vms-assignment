@@ -48,9 +48,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-surface-950 px-4">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent text-lg font-bold text-surface-950">
-            V
-          </div>
+          <img src="/logo.svg" alt="VMS logo" className="h-11 w-11 rounded-lg" />
           <h1 className="text-xl font-semibold text-surface-50">VMS Operations Console</h1>
           <p className="text-sm text-surface-400">Sign in to monitor and manage your camera network.</p>
         </div>
