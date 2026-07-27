@@ -5,3 +5,4 @@ dist/
 media/
 .DS_Store
 .claude/
+*.tsbuildinfo
