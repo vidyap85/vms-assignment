@@ -1,0 +1,576 @@
+openapi: 3.0.3
+info:
+  title: VMS API
+  description: >
+    REST API for the Video Management System demo. Authenticate via POST /api/auth/login
+    to obtain a Bearer access token; a refresh token is set as an httpOnly cookie automatically.
+  version: "1.0.0"
+servers:
+  - url: /api
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Cameras
+  - name: Recordings
+  - name: Snapshots
+  - name: Events
+  - name: Users
+  - name: Dashboard
+  - name: Search
+  - name: Audit Logs
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Log in and receive an access token (refresh token set as httpOnly cookie)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  user: { $ref: "#/components/schemas/UserPublic" }
+        "401": { description: Invalid credentials }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Exchange the refresh cookie for a new access token
+      responses:
+        "200": { description: New access token issued }
+        "401": { description: Missing/invalid refresh token }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out and clear the refresh cookie
+      responses:
+        "200": { description: Logged out }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the current authenticated user
+      responses:
+        "200": { description: Current user }
+
+  /cameras:
+    get:
+      tags: [Cameras]
+      summary: List cameras (scoped to assigned cameras for VIEWER role)
+      parameters:
+        - in: query
+          name: groupId
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [ONLINE, OFFLINE] }
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of cameras
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Camera" }
+    post:
+      tags: [Cameras]
+      summary: Create a camera (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CameraInput" }
+      responses:
+        "201": { description: Created }
+
+  /cameras/groups:
+    get:
+      tags: [Cameras]
+      summary: List camera groups
+      responses:
+        "200": { description: List of groups }
+    post:
+      tags: [Cameras]
+      summary: Create a camera group (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201": { description: Created }
+
+  /cameras/{id}:
+    get:
+      tags: [Cameras]
+      summary: Get camera detail
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200": { description: Camera detail }
+        "403": { description: No access to this camera }
+        "404": { description: Not found }
+    put:
+      tags: [Cameras]
+      summary: Update a camera (ADMIN only)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CameraInput" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      tags: [Cameras]
+      summary: Delete a camera (ADMIN only)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200": { description: Deleted }
+
+  /cameras/{id}/enable:
+    patch:
+      tags: [Cameras]
+      summary: Enable or disable a camera (ADMIN only)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "200": { description: Updated }
+
+  /cameras/{id}/test-connection:
+    post:
+      tags: [Cameras]
+      summary: Probe the camera's RTSP URL directly (via ffprobe) to check whether it's currently live (ADMIN/OPERATOR)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: Probe result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  online: { type: boolean }
+
+  /recordings:
+    get:
+      tags: [Recordings]
+      summary: List recordings, optionally filtered (ADMIN/OPERATOR)
+      parameters:
+        - in: query
+          name: cameraId
+          schema: { type: string }
+        - in: query
+          name: type
+          schema: { type: string, enum: [CONTINUOUS, MANUAL, EVENT] }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: List of recordings
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Recording" }
+
+  /recordings/{id}:
+    get:
+      tags: [Recordings]
+      summary: Get recording detail including its keyframe thumbnails (ADMIN/OPERATOR)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200": { description: Recording with keyframes }
+    delete:
+      tags: [Recordings]
+      summary: Delete a recording — removes the video file, its keyframe thumbnails, and the database record (ADMIN only)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200": { description: Deleted }
+        "400": { description: Recording is still actively being written and cannot be deleted yet }
+        "404": { description: Not found }
+
+  /recordings/{id}/download:
+    get:
+      tags: [Recordings]
+      summary: Download the recording's video file (ADMIN/OPERATOR)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: Video file stream
+          content:
+            video/mp4: {}
+
+  /recordings/manual/start:
+    post:
+      tags: [Recordings]
+      summary: Start a manual recording for a camera (ADMIN/OPERATOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cameraId]
+              properties:
+                cameraId: { type: string }
+      responses:
+        "201": { description: Recording started }
+
+  /recordings/manual/stop:
+    post:
+      tags: [Recordings]
+      summary: Stop the active manual recording for a camera (ADMIN/OPERATOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cameraId]
+              properties:
+                cameraId: { type: string }
+      responses:
+        "200": { description: Recording stopped }
+
+  /recordings/status/{cameraId}:
+    get:
+      tags: [Recordings]
+      summary: Get whether a manual/event recording is currently active for a camera
+      parameters: [{ $ref: "#/components/parameters/CameraIdParam" }]
+      responses:
+        "200":
+          description: Active recording type, if any
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activeType: { type: string, nullable: true, enum: [MANUAL, EVENT, null] }
+
+  /snapshots:
+    get:
+      tags: [Snapshots]
+      summary: List snapshots
+      parameters:
+        - in: query
+          name: cameraId
+          schema: { type: string }
+      responses:
+        "200": { description: List of snapshots }
+    post:
+      tags: [Snapshots]
+      summary: Capture a snapshot from a camera's live stream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cameraId]
+              properties:
+                cameraId: { type: string }
+      responses:
+        "201": { description: Snapshot captured }
+
+  /snapshots/{id}/download:
+    get:
+      tags: [Snapshots]
+      summary: Download a snapshot image
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: Image file
+          content:
+            image/jpeg: {}
+
+  /events:
+    get:
+      tags: [Events]
+      summary: List events (ADMIN/OPERATOR)
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [OPEN, CLOSED] }
+        - in: query
+          name: type
+          schema: { type: string }
+        - in: query
+          name: severity
+          schema: { type: string, enum: [INFO, WARNING, CRITICAL] }
+        - in: query
+          name: cameraId
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Event" }
+
+  /events/{id}:
+    get:
+      tags: [Events]
+      summary: Get event detail (ADMIN/OPERATOR)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200": { description: Event detail }
+
+  /events/{id}/close:
+    patch:
+      tags: [Events]
+      summary: Close an event (ADMIN/OPERATOR)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200": { description: Event closed }
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users (ADMIN only)
+      responses:
+        "200": { description: List of users }
+    post:
+      tags: [Users]
+      summary: Create a user (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserInput" }
+      responses:
+        "201": { description: Created }
+
+  /users/{id}:
+    put:
+      tags: [Users]
+      summary: Update a user, including VIEWER camera assignments (ADMIN only)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserInput" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      tags: [Users]
+      summary: Delete a user (ADMIN only)
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200": { description: Deleted }
+
+  /dashboard/stats:
+    get:
+      tags: [Dashboard]
+      summary: Get aggregate system stats for the dashboard/command center
+      responses:
+        "200":
+          description: Stats snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardStats" }
+
+  /search:
+    get:
+      tags: [Search]
+      summary: Unified search across cameras, recordings, events, and (ADMIN only) users
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: cameraId
+          schema: { type: string }
+        - in: query
+          name: groupId
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: eventType
+          schema: { type: string }
+      responses:
+        "200": { description: Grouped search results }
+
+  /audit-logs:
+    get:
+      tags: [Audit Logs]
+      summary: List audit log entries (ADMIN only)
+      parameters:
+        - in: query
+          name: userId
+          schema: { type: string }
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200": { description: List of audit log entries }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    CameraIdParam:
+      name: cameraId
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    UserPublic:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        role: { type: string, enum: [ADMIN, OPERATOR, VIEWER] }
+    UserInput:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        password: { type: string }
+        role: { type: string, enum: [ADMIN, OPERATOR, VIEWER] }
+        enabled: { type: boolean }
+        cameraIds:
+          type: array
+          items: { type: string }
+    Camera:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        location: { type: string }
+        rtspUrl: { type: string }
+        hlsUrl: { type: string }
+        groupId: { type: string, nullable: true }
+        resolution: { type: string }
+        fps: { type: integer }
+        recordingEnabled: { type: boolean }
+        eventRecordingEnabled: { type: boolean }
+        enabled: { type: boolean }
+        status: { type: string, enum: [ONLINE, OFFLINE] }
+        lastHeartbeat: { type: string, format: date-time, nullable: true }
+        streamKey: { type: string }
+    CameraInput:
+      type: object
+      required: [name, location]
+      properties:
+        name: { type: string }
+        location: { type: string }
+        rtspUrl:
+          type: string
+          description: >
+            Optional. A real IP camera's RTSP URL — used directly for recording, snapshots and
+            heartbeat checks. If omitted, defaults to an internal simulated demo stream.
+        groupId: { type: string, nullable: true }
+        resolution: { type: string }
+        fps: { type: integer }
+        recordingEnabled: { type: boolean }
+        eventRecordingEnabled: { type: boolean }
+        enabled: { type: boolean }
+    Recording:
+      type: object
+      properties:
+        id: { type: string }
+        cameraId: { type: string }
+        type: { type: string, enum: [CONTINUOUS, MANUAL, EVENT] }
+        startTime: { type: string, format: date-time }
+        endTime: { type: string, format: date-time, nullable: true }
+        filePath: { type: string }
+        fileSizeBytes: { type: string, nullable: true }
+        status: { type: string, enum: [RECORDING, COMPLETED, FAILED] }
+    Event:
+      type: object
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum:
+            [CAMERA_OFFLINE, MOTION_DETECTED, RECORDING_STARTED, RECORDING_STOPPED, RECORDING_FAILURE, STORAGE_FULL, CAMERA_RECONNECTED, USER_LOGIN, USER_LOGOUT]
+        cameraId: { type: string, nullable: true }
+        userId: { type: string, nullable: true }
+        severity: { type: string, enum: [INFO, WARNING, CRITICAL] }
+        description: { type: string }
+        status: { type: string, enum: [OPEN, CLOSED] }
+        createdAt: { type: string, format: date-time }
+    DashboardStats:
+      type: object
+      properties:
+        totalCameras: { type: integer }
+        onlineCameras: { type: integer }
+        offlineCameras: { type: integer }
+        activeLiveStreams: { type: integer }
+        activeRecordings: { type: integer }
+        storageUsedBytes: { type: integer }
+        storageCapacityBytes: { type: integer }
+        storageUsedPercent: { type: integer }
+        recentEvents:
+          type: array
+          items: { $ref: "#/components/schemas/Event" }
+        cameraHealth:
+          type: array
+          items: { type: object }
+        systemUptimeSeconds: { type: integer }
+        totalUsers: { type: integer }
+        connectedClients: { type: integer }

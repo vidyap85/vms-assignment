@@ -1,0 +1,80 @@
+name: vms-assignment
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vms}
+      POSTGRES_USER: ${POSTGRES_USER:-vms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vms_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    restart: unless-stopped
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "8554:8554"
+      - "8888:8888"
+      - "9997:9997"
+
+  camera-sim:
+    build: ./camera-sim
+    restart: unless-stopped
+    environment:
+      CAMERA_COUNT: ${CAMERA_COUNT:-9}
+      MEDIAMTX_HOST: mediamtx
+      MEDIAMTX_RTSP_PORT: 8554
+    depends_on:
+      - mediamtx
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vms}:${POSTGRES_PASSWORD:-vms_password}@postgres:5432/${POSTGRES_DB:-vms}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8090}
+      CAMERA_COUNT: ${CAMERA_COUNT:-9}
+      MEDIAMTX_RTSP_BASE: rtsp://mediamtx:8554
+      MEDIA_ROOT: /media
+      RECORDING_SEGMENT_SECONDS: ${RECORDING_SEGMENT_SECONDS:-60}
+      KEYFRAME_INTERVAL_SECONDS: ${KEYFRAME_INTERVAL_SECONDS:-30}
+      STORAGE_CAPACITY_BYTES: ${STORAGE_CAPACITY_BYTES:-21474836480}
+    volumes:
+      - media_data:/media
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+      camera-sim:
+        condition: service_started
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    volumes:
+      - media_data:/media:ro
+    ports:
+      - "${WEB_PORT:-8090}:80"
+    depends_on:
+      - api
+      - mediamtx
+
+volumes:
+  postgres_data:
+  media_data:

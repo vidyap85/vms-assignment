@@ -1,0 +1,51 @@
+# MediaMTX configuration for the VMS demo.
+# Ingests RTSP from the camera-sim container and serves HLS for browser playback.
+
+logLevel: info
+logDestinations: [stdout]
+
+# RTSP server (camera-sim publishes here, api recorder pulls from here)
+rtsp: yes
+protocols: [tcp]
+rtspAddress: :8554
+
+# HLS server (browser live view plays from here, proxied by nginx at /hls)
+hls: yes
+hlsAddress: :8888
+# Remux to HLS only while a browser is actually watching (on-demand), not continuously
+# for every published path — with several simulated cameras running at once this
+# meaningfully cuts idle CPU use.
+hlsAlwaysRemux: no
+hlsVariant: mpegts
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsAllowOrigin: "*"
+
+# HTTP control API (used by the api service to check publisher/ready status)
+api: yes
+apiAddress: :9997
+
+# RTMP/WebRTC/SRT not needed for this demo
+rtmp: no
+webrtc: no
+srt: no
+
+# This demo has no real credentials to protect (procedurally-generated test feeds,
+# not exposed outside the docker-compose network in a real deployment), so open up
+# publish/read/api access rather than wiring a second credential store on top of
+# the app's own auth. A production deployment fronting real cameras would restrict
+# this via authInternalUsers ips/pass or an external auth webhook.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+
+paths:
+  all_others:

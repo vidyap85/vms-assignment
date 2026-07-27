@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum CameraStatus {
+  ONLINE
+  OFFLINE
+}
+
+enum RecordingType {
+  CONTINUOUS
+  MANUAL
+  EVENT
+}
+
+enum RecordingStatus {
+  RECORDING
+  COMPLETED
+  FAILED
+}
+
+enum EventType {
+  CAMERA_OFFLINE
+  MOTION_DETECTED
+  RECORDING_STARTED
+  RECORDING_STOPPED
+  RECORDING_FAILURE
+  STORAGE_FULL
+  CAMERA_RECONNECTED
+  USER_LOGIN
+  USER_LOGOUT
+}
+
+enum EventSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum EventStatus {
+  OPEN
+  CLOSED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(VIEWER)
+  enabled      Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cameraAccess UserCameraAccess[]
+  snapshots    Snapshot[]
+  events       Event[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model CameraGroup {
+  id      String   @id @default(uuid())
+  name    String   @unique
+  cameras Camera[]
+
+  @@map("camera_groups")
+}
+
+model Camera {
+  id                     String        @id @default(uuid())
+  name                   String
+  location               String
+  rtspUrl                String
+  groupId                String?
+  group                  CameraGroup?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  resolution             String        @default("1280x720")
+  fps                    Int           @default(25)
+  recordingEnabled       Boolean       @default(true)
+  eventRecordingEnabled  Boolean       @default(true)
+  enabled                Boolean       @default(true)
+  status                 CameraStatus  @default(OFFLINE)
+  lastHeartbeat          DateTime?
+  streamKey              String        @unique
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  userAccess  UserCameraAccess[]
+  recordings  Recording[]
+  snapshots   Snapshot[]
+  events      Event[]
+
+  @@map("cameras")
+}
+
+model UserCameraAccess {
+  userId   String
+  cameraId String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  camera   Camera @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+
+  @@id([userId, cameraId])
+  @@map("user_camera_access")
+}
+
+model Recording {
+  id             String          @id @default(uuid())
+  cameraId       String
+  camera         Camera          @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  type           RecordingType
+  startTime      DateTime
+  endTime        DateTime?
+  filePath       String
+  fileSizeBytes  BigInt?
+  status         RecordingStatus @default(RECORDING)
+  triggerEventId String?
+  createdAt      DateTime        @default(now())
+
+  keyframes Keyframe[]
+
+  @@index([cameraId, startTime])
+  @@map("recordings")
+}
+
+model Keyframe {
+  id             String    @id @default(uuid())
+  recordingId    String
+  recording      Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  offsetSeconds  Int
+  thumbnailPath  String
+  createdAt      DateTime  @default(now())
+
+  @@index([recordingId, offsetSeconds])
+  @@map("keyframes")
+}
+
+model Snapshot {
+  id        String   @id @default(uuid())
+  cameraId  String
+  camera    Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  filePath  String
+  createdAt DateTime @default(now())
+
+  @@map("snapshots")
+}
+
+model Event {
+  id          String        @id @default(uuid())
+  type        EventType
+  cameraId    String?
+  camera      Camera?       @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  severity    EventSeverity @default(INFO)
+  description String
+  status      EventStatus   @default(OPEN)
+  createdAt   DateTime      @default(now())
+
+  @@index([type, createdAt])
+  @@index([status])
+  @@map("events")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}

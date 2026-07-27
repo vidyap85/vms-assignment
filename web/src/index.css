@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  /* The app has no light-mode theme (dark is hardcoded) — without this, browsers can render
+     native form control chrome (date picker icon, etc.) using their own light/dark preference
+     instead of the page's actual appearance, making things like the date input's calendar
+     icon render dark-on-dark and effectively invisible. */
+  color-scheme: dark;
+}
+
+body {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: theme("colors.surface.600") transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: theme("colors.surface.600");
+  border-radius: 9999px;
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-surface-800 bg-surface-900 shadow-panel dark:border-surface-800 dark:bg-surface-900;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent text-surface-950 hover:bg-accent-soft;
+  }
+
+  .btn-secondary {
+    @apply btn bg-surface-800 text-surface-100 hover:bg-surface-700;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger text-white hover:bg-danger-soft;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-surface-300 hover:bg-surface-800 hover:text-surface-50;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-surface-700 bg-surface-850 px-3 py-1.5 text-sm text-surface-100 placeholder-surface-500 outline-none focus:border-accent focus:ring-1 focus:ring-accent;
+  }
+
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-surface-400;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide;
+  }
+
+  .icon-btn {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/50 text-white transition-colors hover:bg-black/75 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+}
