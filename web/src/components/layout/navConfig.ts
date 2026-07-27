@@ -21,7 +21,7 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: DashboardIcon, roles: ["ADMIN", "OPERATOR"] },
+  { to: "/dashboard", label: "Dashboard", icon: DashboardIcon, roles: ["ADMIN"] },
   { to: "/cameras", label: "Cameras", icon: CameraIcon, roles: ["ADMIN", "OPERATOR"] },
   { to: "/live", label: "Live View", icon: LiveIcon, roles: ["ADMIN", "OPERATOR", "VIEWER"] },
   { to: "/snapshots", label: "Snapshots", icon: SnapshotIcon, roles: ["ADMIN", "OPERATOR", "VIEWER"] },
