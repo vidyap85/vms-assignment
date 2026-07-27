@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { deleteRecording, getRecording, listRecordings, recordingDownloadUrl } from "../api/recordings";
+import { deleteRecording, downloadRecording, getRecording, listRecordings } from "../api/recordings";
 import { listCameras } from "../api/cameras";
 import type { Camera, Recording } from "../types";
 import { useAuthStore } from "../store/authStore";
@@ -38,6 +38,7 @@ export default function Playback() {
 
   const [deleting, setDeleting] = useState<Recording | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -92,6 +93,18 @@ export default function Playback() {
       pushToast(err instanceof Error ? err.message : "Failed to delete recording.", "error");
     } finally {
       setDeleteBusy(false);
+    }
+  }
+
+  async function handleDownload() {
+    if (!active || downloadBusy) return;
+    setDownloadBusy(true);
+    try {
+      await downloadRecording(active.id);
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Failed to download recording.", "error");
+    } finally {
+      setDownloadBusy(false);
     }
   }
 
@@ -223,9 +236,14 @@ export default function Playback() {
                 <button className="btn-ghost" onClick={captureFrame} title="Snapshot current frame">
                   <SnapshotIcon className="h-4 w-4" />
                 </button>
-                <a className="btn-ghost" href={recordingDownloadUrl(active.id)} title="Download recording">
-                  <DownloadIcon className="h-4 w-4" />
-                </a>
+                <button
+                  className="btn-ghost"
+                  onClick={handleDownload}
+                  disabled={downloadBusy}
+                  title="Download recording"
+                >
+                  {downloadBusy ? <Spinner size={14} /> : <DownloadIcon className="h-4 w-4" />}
+                </button>
               </div>
 
               {active.keyframes && active.keyframes.length > 0 && (
