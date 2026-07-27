@@ -82,10 +82,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!res.ok) {
     const errBody = await parseBody(res);
-    const message =
-      (errBody && typeof errBody === "object" && "message" in errBody
-        ? String((errBody as { message?: unknown }).message)
-        : null) ?? `Request failed with status ${res.status}`;
+    const extracted =
+      errBody && typeof errBody === "object"
+        ? ((errBody as { error?: unknown; message?: unknown }).error ??
+          (errBody as { error?: unknown; message?: unknown }).message)
+        : null;
+    const message = extracted != null ? String(extracted) : `Request failed with status ${res.status}`;
     throw new ApiError(res.status, message, errBody);
   }
 

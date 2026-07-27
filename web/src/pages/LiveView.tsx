@@ -24,9 +24,22 @@ export default function LiveView() {
 
   useEffect(() => {
     listCameras()
-      .then((data) => {
+      .then(async (data) => {
         setCameras(data);
         setSlots(data.slice(0, gridSize).map((c) => c.id));
+        if (canRecord) {
+          const entries = await Promise.all(
+            data.map(async (c) => {
+              try {
+                const status = await getRecordingStatus(c.id);
+                return [c.id, status.activeType === "MANUAL"] as const;
+              } catch {
+                return [c.id, false] as const;
+              }
+            })
+          );
+          setActiveRecordings(Object.fromEntries(entries));
+        }
       })
       .catch(() => pushToast("Failed to load cameras.", "error"))
       .finally(() => setLoading(false));
