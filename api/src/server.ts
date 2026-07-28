@@ -44,6 +44,14 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 const openapiPath = path.join(__dirname, '..', 'openapi.yaml');
 if (fs.existsSync(openapiPath)) {
   const openapiDoc = YAML.load(openapiPath);
+  // Swagger UI's bundle needs script-src 'unsafe-inline'/'unsafe-eval' to render,
+  // which the app's strict default CSP (from helmet) blocks — the page loads but
+  // stays blank. This is internal API-docs tooling, not app-facing UI, so relax
+  // CSP for this path only rather than weakening it globally.
+  app.use('/api/docs', (_req, res, next) => {
+    res.removeHeader('Content-Security-Policy');
+    next();
+  });
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiDoc));
 }
 
