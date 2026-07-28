@@ -12,6 +12,7 @@ import { HttpError } from '../middleware/errorHandler';
 type CameraLite = { id: string; name: string; rtspUrl: string; enabled: boolean; recordingEnabled: boolean };
 
 const continuousProcs = new Map<string, ChildProcessWithoutNullStreams>();
+const continuousProcStartedAt = new Map<string, number>();
 const intentionalStops = new Set<string>();
 const registeredFiles = new Set<string>();
 
@@ -55,9 +56,11 @@ function startContinuousProc(camera: CameraLite) {
   ];
   const proc = spawnFfmpeg(args);
   continuousProcs.set(camera.id, proc);
+  continuousProcStartedAt.set(camera.id, Date.now());
 
   proc.on('exit', async (code) => {
     continuousProcs.delete(camera.id);
+    continuousProcStartedAt.delete(camera.id);
     if (intentionalStops.has(camera.id)) {
       intentionalStops.delete(camera.id);
       return;
@@ -109,7 +112,35 @@ export async function initRecorder() {
   for (const camera of cameras) startContinuousProc(camera);
   setInterval(() => {
     scanAllSegments().catch((err) => console.error('Segment scan failed', err));
+    watchdogContinuousRecordings();
   }, 15000);
+}
+
+/**
+ * ffmpeg can occasionally hang mid-stream (e.g. a stalled RTSP read that its own
+ * -timeout option doesn't catch) without exiting, so the normal exit-triggered
+ * restart never fires. Detect that by staleness of the newest segment file and
+ * force-kill it — SIGKILL, not SIGINT, since a hung process may not respond to
+ * SIGINT either — letting the existing 'exit' handler restart it cleanly.
+ */
+function watchdogContinuousRecordings() {
+  const staleMs = Math.max(env.recordingSegmentSeconds * 3, 120) * 1000;
+  const now = Date.now();
+  for (const [cameraId, proc] of continuousProcs) {
+    const dir = cameraRecordingDir(cameraId, 'continuous');
+    let lastActivity = continuousProcStartedAt.get(cameraId) ?? now;
+    if (fs.existsSync(dir)) {
+      const files = fs.readdirSync(dir).filter((f) => FILENAME_RE.test(f));
+      for (const file of files) {
+        const mtime = fs.statSync(path.join(dir, file)).mtimeMs;
+        if (mtime > lastActivity) lastActivity = mtime;
+      }
+    }
+    if (now - lastActivity > staleMs) {
+      console.error(`Continuous recording for camera ${cameraId} stale for ${Math.round((now - lastActivity) / 1000)}s, force-restarting`);
+      proc.kill('SIGKILL');
+    }
+  }
 }
 
 async function scanAllSegments() {
