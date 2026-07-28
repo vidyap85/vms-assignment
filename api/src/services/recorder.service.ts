@@ -42,6 +42,7 @@ function startContinuousProc(camera: CameraLite) {
   const args = [
     '-nostdin',
     '-rtsp_transport', 'tcp',
+    '-timeout', '15000000',
     '-i', camera.rtspUrl,
     '-c', 'copy',
     '-f', 'segment',
@@ -187,6 +188,7 @@ async function startAdhocRecording(camera: CameraLite, kind: 'MANUAL' | 'EVENT',
   const args = [
     '-nostdin',
     '-rtsp_transport', 'tcp',
+    '-timeout', '15000000',
     '-i', camera.rtspUrl,
     '-c', 'copy',
     '-f', 'mp4',
@@ -228,10 +230,14 @@ async function stopAdhocRecording(cameraId: string, cameraName: string) {
   state.stopping = true;
 
   await new Promise<void>((resolve) => {
-    state.proc.once('exit', () => resolve());
+    let exited = false;
+    state.proc.once('exit', () => {
+      exited = true;
+      resolve();
+    });
     state.proc.kill('SIGINT');
     setTimeout(() => {
-      if (!state.proc.killed) state.proc.kill('SIGKILL');
+      if (!exited) state.proc.kill('SIGKILL');
       resolve();
     }, 5000);
   });

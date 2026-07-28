@@ -138,7 +138,9 @@ export default function LiveView() {
                 {camera ? (
                   <SafeCameraTile
                     camera={camera}
-                    recording={!!activeRecordings[camera.id]}
+                    recording={
+                      !!activeRecordings[camera.id] || (camera.recordingEnabled && camera.status === "ONLINE")
+                    }
                     recordControl={
                       canRecord
                         ? {
