@@ -40,6 +40,10 @@ export default function Playback() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -60,11 +64,29 @@ export default function Playback() {
     setLoadingList(true);
     const from = `${date}T00:00:00.000Z`;
     const to = `${date}T23:59:59.999Z`;
+    setSelectedIds(new Set());
     listRecordings({ cameraId, from, to })
       .then(setRecordings)
       .catch(() => pushToast("Failed to load recordings.", "error"))
       .finally(() => setLoadingList(false));
   }, [cameraId, date]);
+
+  const deletableRecordings = recordings.filter((r) => r.status !== "RECORDING");
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) =>
+      prev.size === deletableRecordings.length ? new Set() : new Set(deletableRecordings.map((r) => r.id))
+    );
+  }
 
   async function selectRecording(rec: Recording) {
     setLoadingActive(true);
@@ -94,6 +116,31 @@ export default function Playback() {
     } finally {
       setDeleteBusy(false);
     }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    setBulkDeleteBusy(true);
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(ids.map((id) => deleteRecording(id)));
+    const succeeded = new Set(ids.filter((_, i) => results[i].status === "fulfilled"));
+    const failedCount = ids.length - succeeded.size;
+
+    setRecordings((prev) => prev.filter((r) => !succeeded.has(r.id)));
+    if (active && succeeded.has(active.id)) setActive(null);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of succeeded) next.delete(id);
+      return next;
+    });
+
+    if (failedCount === 0) {
+      pushToast(`Deleted ${succeeded.size} recording${succeeded.size === 1 ? "" : "s"}.`, "success");
+      setBulkDeleteOpen(false);
+    } else {
+      pushToast(`Deleted ${succeeded.size}, failed to delete ${failedCount}.`, "error");
+    }
+    setBulkDeleteBusy(false);
   }
 
   async function handleDownload() {
@@ -277,9 +324,34 @@ export default function Playback() {
         </div>
 
         <div className="card max-h-[70vh] overflow-y-auto p-2">
-          <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-surface-500">
-            Recordings ({recordings.length})
-          </p>
+          <div className="flex items-center justify-between gap-2 px-2 py-1">
+            <div className="flex items-center gap-2">
+              {isAdmin && deletableRecordings.length > 0 && (
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={selectedIds.size > 0 && selectedIds.size === deletableRecordings.length}
+                  ref={(el) => {
+                    if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < deletableRecordings.length;
+                  }}
+                  onChange={toggleSelectAll}
+                  title="Select all"
+                />
+              )}
+              <p className="text-xs font-medium uppercase tracking-wide text-surface-500">
+                Recordings ({recordings.length})
+              </p>
+            </div>
+            {isAdmin && selectedIds.size > 0 && (
+              <button
+                onClick={() => setBulkDeleteOpen(true)}
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-danger-soft hover:bg-danger/10"
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+                Delete ({selectedIds.size})
+              </button>
+            )}
+          </div>
           {loadingList && <Spinner size={18} className="mx-auto my-4 text-accent" />}
           {!loadingList && recordings.length === 0 && (
             <p className="px-2 py-4 text-center text-sm text-surface-500">No recordings for this day.</p>
@@ -288,13 +360,22 @@ export default function Playback() {
             {recordings.map((rec) => (
               <div
                 key={rec.id}
-                className={`group relative rounded-md border transition-colors ${
+                className={`group relative flex items-start gap-1.5 rounded-md border pr-1 transition-colors ${
                   active?.id === rec.id
                     ? "border-accent bg-accent/10"
                     : "border-transparent bg-surface-850 hover:border-surface-700"
                 }`}
               >
-                <button onClick={() => selectRecording(rec)} className="w-full px-3 py-2 text-left text-xs">
+                {isAdmin && rec.status !== "RECORDING" && (
+                  <input
+                    type="checkbox"
+                    className="accent-accent ml-2 mt-3 shrink-0"
+                    checked={selectedIds.has(rec.id)}
+                    onChange={() => toggleSelected(rec.id)}
+                    title="Select for bulk delete"
+                  />
+                )}
+                <button onClick={() => selectRecording(rec)} className="min-w-0 flex-1 px-1.5 py-2 text-left text-xs">
                   <div className="flex items-center justify-between pr-5">
                     <span className="font-medium text-surface-100">{formatTime(rec.startTime)}</span>
                     <RecordingStatusBadge status={rec.status} />
@@ -331,6 +412,16 @@ export default function Playback() {
         loading={deleteBusy}
         onConfirm={handleDelete}
         onCancel={() => setDeleting(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        title="Delete Recordings"
+        message={`Delete ${selectedIds.size} selected recording${selectedIds.size === 1 ? "" : "s"}? The video files and their thumbnails will be permanently removed.`}
+        confirmLabel="Delete"
+        loading={bulkDeleteBusy}
+        onConfirm={handleBulkDelete}
+        onCancel={() => setBulkDeleteOpen(false)}
       />
     </div>
   );
